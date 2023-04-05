@@ -992,6 +992,7 @@ dependencies = [
 [[package]]
 name = "kidex-common"
 version = "0.1.0"
+source = "git+https://github.com/Kirottu/kidex#afcbf54b37dc47b914e0c8f873cb1f11c69674a7"
 dependencies = [
  "serde",
  "serde_json",
