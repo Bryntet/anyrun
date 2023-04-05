@@ -1,4 +1,4 @@
-use std::{cell::RefCell, env, fs, path::PathBuf, rc::Rc, time::Duration};
+use std::{cell::RefCell, env, fs, mem, path::PathBuf, rc::Rc, time::Duration};
 
 use abi_stable::std_types::{ROption, RVec};
 use anyrun_interface::{HandleResult, Match, PluginInfo, PluginRef, PollResult};
@@ -388,13 +388,14 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<Option<RuntimeData>
             }
             // Handle when the selected match is "activated"
             constants::Return => {
-                let (selected_match, plugin) = match runtime_data
-                    .borrow()
+                let mut _runtime_data = runtime_data.borrow_mut();
+
+                let (selected_match, plugin_view) = match _runtime_data
                     .as_ref()
                     .unwrap()
                     .plugins
                     .iter()
-                    .find_map(|view| view.list.selected_row().map(|row| (row, view.plugin)))
+                    .find_map(|view| view.list.selected_row().map(|row| (row, view)))
                 {
                     Some(selected) => selected,
                     None => {
@@ -403,7 +404,7 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<Option<RuntimeData>
                 };
 
                 // Perform actions based on the result of handling the selection
-                match plugin.handle_selection()(unsafe {
+                match plugin_view.plugin.handle_selection()(unsafe {
                     (*selected_match.data::<Match>("match").unwrap().as_ptr()).clone()
                 }) {
                     HandleResult::Close => {
@@ -411,11 +412,17 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<Option<RuntimeData>
                         Inhibit(true)
                     }
                     HandleResult::Refresh(exclusive) => {
-                        refresh_matches(entry_clone.text().to_string(), runtime_data.clone());
+                        if exclusive {
+                            _runtime_data.as_mut().unwrap().exclusive = Some(plugin_view.clone());
+                        } else {
+                            _runtime_data.as_mut().unwrap().exclusive = None;
+                        }
+                        mem::drop(_runtime_data); // Drop the mutable borrow
+                        refresh_matches(entry_clone.text().into(), runtime_data.clone());
                         Inhibit(false)
                     }
                     HandleResult::Copy(bytes) => {
-                        runtime_data.borrow_mut().as_mut().unwrap().post_run_action =
+                        _runtime_data.as_mut().unwrap().post_run_action =
                             PostRunAction::Copy(bytes.into());
                         window.close();
                         Inhibit(true)
@@ -614,6 +621,8 @@ fn refresh_matches(input: String, runtime_data: Rc<RefCell<Option<RuntimeData>>>
                 glib::timeout_add_local(Duration::from_micros(1000), move || {
                     async_match(plugin_view.clone(), runtime_data_clone.clone(), id)
                 });
+            } else {
+                handle_matches(plugin_view.clone(), runtime_data_clone, RVec::new());
             }
         } else {
             glib::timeout_add_local(Duration::from_micros(1000), move || {
