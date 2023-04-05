@@ -377,9 +377,9 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<Option<RuntimeData>
             }
             // Handle when the selected match is "activated"
             constants::Return => {
-                let (selected_match, plugin) = match plugins
+                let (selected_match, plugin_view) = match plugins
                     .iter()
-                    .find_map(|view| view.list.selected_row().map(|row| (row, view.plugin)))
+                    .find_map(|view| view.list.selected_row().map(|row| (row, view)))
                 {
                     Some(selected) => selected,
                     None => {
@@ -395,8 +395,15 @@ fn activate(app: &gtk::Application, runtime_data: Rc<RefCell<Option<RuntimeData>
                         window.close();
                         Inhibit(true)
                     }
-                    HandleResult::Refresh => {
-                        refresh_matches(entry_clone.text().to_string(), plugins.clone());
+                    HandleResult::Refresh(exclusive) => {
+                        if exclusive {
+                            refresh_matches(
+                                entry_clone.text().to_string(),
+                                plugins.iter().find(|view| view.plugin),
+                            )
+                        } else {
+                            refresh_matches(entry_clone.text().to_string(), plugins.clone());
+                        }
                         Inhibit(false)
                     }
                     HandleResult::Copy(bytes) => {
